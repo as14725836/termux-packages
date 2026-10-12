@@ -1,13 +1,13 @@
---- a/server/libadrenotools/CMakeLists.txt	2026-10-12 07:46:31.227365239 +0000
-+++ b/server/libadrenotools/CMakeLists.txt	2026-10-12 07:46:31.275365239 +0000
+--- a/server/libadrenotools/CMakeLists.txt
++++ b/server/libadrenotools/CMakeLists.txt
 @@ -1,6 +1,10 @@
  cmake_minimum_required(VERSION 3.14)
  
 -if(NOT ${CMAKE_ANDROID_ARCH_ABI} STREQUAL arm64-v8a)
 +# Termux builds with CMAKE_SYSTEM_NAME=Android plus a standalone toolchain and
 +# never populates CMAKE_ANDROID_ARCH_ABI, so the upstream arm64-v8a guard would
-+# always abort. The package is aarch64-only (enforced by the Termux build
-+# system), so only reject an explicitly mismatching ABI.
++# always abort. This package is aarch64-only (enforced by
++# TERMUX_PKG_EXCLUDED_ARCHES), so only reject a mismatching ABI.
 +if(CMAKE_ANDROID_ARCH_ABI AND NOT CMAKE_ANDROID_ARCH_ABI STREQUAL arm64-v8a)
  	message(FATAL_ERROR "Unsupported target architecture: ${CMAKE_ANDROID_ARCH_ABI}. Please make an issue on the repo!")
  endif()

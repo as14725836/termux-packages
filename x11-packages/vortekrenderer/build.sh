@@ -8,6 +8,10 @@ TERMUX_PKG_SRCURL="https://github.com/as14725836/vortek-termux/archive/f80c80816
 TERMUX_PKG_SHA256=669389dbaef98d2341dc3f990d2840fce3d1c957b0256efe526f6365cd335b49
 TERMUX_PKG_AUTO_UPDATE=false
 TERMUX_PKG_PLATFORM_INDEPENDENT=false
+# The CLI needs AHardwareBuffer (API 26) and the renderer targets
+# aarch64-linux-android26. Termux defaults to API 24, which is too low, so pin
+# it here; it also becomes the -DVORTEK_CLI_ANDROID_API value below.
+TERMUX_PKG_API_LEVEL=26
 # The renderer drives an Adreno driver through libadrenotools, which only
 # supports arm64-v8a, and the CLI targets aarch64-linux-android explicitly.
 TERMUX_PKG_EXCLUDED_ARCHES="arm, i686, x86_64"
@@ -29,38 +33,23 @@ TERMUX_PKG_EXTRA_CONFIGURE_ARGS="
 -DADRENOTOOLS_INCLUDE_DIR=$TERMUX_PKG_SRCDIR/server/libadrenotools/include
 -DWINLATOR_SOURCE_DIR=$TERMUX_PKG_SRCDIR/server/winlator
 -DADRENOTOOLS_LIBRARY=adrenotools
--DCMAKE_INSTALL_PREFIX=$TERMUX_PREFIX
 "
 
 # There is no CMakeLists.txt at the top of the source tree (the renderer lives
 # in server/vortekrenderer), so the default configure step would be skipped.
-# Configure that subdirectory explicitly instead.
+# Point the stock cmake helper at that subdirectory and reuse it, rather than
+# hand-rolling a cmake invocation: the helper also forwards $CFLAGS/$CXXFLAGS
+# (which carry --target and the sysroot) into CMAKE_C_FLAGS, and without those
+# the try-compile step links against a bare NDK sysroot and fails with
+# "cannot open crtbegin_dynamic.o" / "unable to find library -lc++".
 termux_step_configure() {
 	termux_setup_cmake
 	termux_setup_ninja
 
-	cmake -G Ninja \
-		-S "$TERMUX_PKG_SRCDIR/server/vortekrenderer" \
-		-B "$TERMUX_PKG_BUILDDIR" \
-		-DCMAKE_SYSTEM_NAME=Android \
-		-DCMAKE_SYSTEM_VERSION="$TERMUX_PKG_API_LEVEL" \
-		-DCMAKE_ANDROID_STANDALONE_TOOLCHAIN="$TERMUX_STANDALONE_TOOLCHAIN" \
-		-DCMAKE_SYSTEM_PROCESSOR=aarch64 \
-		-DCMAKE_C_COMPILER="$CC" \
-		-DCMAKE_CXX_COMPILER="$CXX" \
-		-DCMAKE_AR="$(command -v "$AR")" \
-		-DCMAKE_RANLIB="$(command -v "$RANLIB")" \
-		-DCMAKE_STRIP="$(command -v "$STRIP")" \
-		-DCMAKE_BUILD_TYPE=Release \
-		-DCMAKE_FIND_ROOT_PATH="$TERMUX_PREFIX" \
-		-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
-		-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-		-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-		-DCMAKE_INSTALL_LIBDIR="$TERMUX__PREFIX__LIB_DIR" \
-		-DCMAKE_INSTALL_INCLUDEDIR="$TERMUX__PREFIX__INCLUDE_DIR" \
-		-DCMAKE_SKIP_INSTALL_RPATH=ON \
-		-DCMAKE_USE_SYSTEM_LIBRARIES=True \
-		$TERMUX_PKG_EXTRA_CONFIGURE_ARGS
+	local TERMUX_PKG_SRCDIR_SAVE="$TERMUX_PKG_SRCDIR"
+	TERMUX_PKG_SRCDIR="$TERMUX_PKG_SRCDIR_SAVE/server/vortekrenderer"
+	termux_step_configure_cmake
+	TERMUX_PKG_SRCDIR="$TERMUX_PKG_SRCDIR_SAVE"
 }
 
 termux_step_pre_configure() {
@@ -81,12 +70,18 @@ termux_step_pre_configure() {
 		-DCMAKE_ANDROID_STANDALONE_TOOLCHAIN="$TERMUX_STANDALONE_TOOLCHAIN" \
 		-DCMAKE_SYSTEM_PROCESSOR=aarch64 \
 		-DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" \
+		-DCMAKE_C_FLAGS="$CFLAGS $CPPFLAGS" \
+		-DCMAKE_CXX_FLAGS="$CXXFLAGS $CPPFLAGS" \
 		-DCMAKE_AR="$(command -v "$AR")" \
 		-DCMAKE_RANLIB="$(command -v "$RANLIB")" \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DBUILD_SHARED_LIBS=ON \
 		-DCMAKE_LIBRARY_OUTPUT_DIRECTORY="$TERMUX_PKG_BUILDDIR/adreno-lib"
 	cmake --build "$adreno_build" -j"$(nproc)"
+
+	# libadrenotools installs its hook payloads next to the shared objects, so
+	# keep the same layout in the build tree.
+	mkdir -p "$TERMUX_PKG_BUILDDIR/adreno-lib"
 
 	# The renderer links the adrenotools symbol even though the library is
 	# dlopen()ed at runtime, so make the fresh build directory visible to the

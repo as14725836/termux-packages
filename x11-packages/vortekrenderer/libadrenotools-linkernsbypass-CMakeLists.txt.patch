@@ -1,0 +1,12 @@
+--- a/server/libadrenotools/lib/linkernsbypass/CMakeLists.txt
++++ b/server/libadrenotools/lib/linkernsbypass/CMakeLists.txt
+@@ -1,6 +1,8 @@
+ cmake_minimum_required(VERSION 3.14)
+ 
+-if(NOT ${CMAKE_ANDROID_ARCH_ABI} STREQUAL arm64-v8a)
++# Termux never populates CMAKE_ANDROID_ARCH_ABI (see the top level patch for
++# details), so drop the guard unless a conflicting ABI is set explicitly.
++if(CMAKE_ANDROID_ARCH_ABI AND NOT CMAKE_ANDROID_ARCH_ABI STREQUAL arm64-v8a)
+ 	message(FATAL_ERROR "Unsupported target architecture: ${CMAKE_ANDROID_ARCH_ABI}. Please make an issue on the repo!")
+ endif()
+ 
