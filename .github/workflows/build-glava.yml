@@ -1,4 +1,4 @@
-name: Build glava package
+name: Build glava packages
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
       - master
     paths:
       - 'x11-packages/glava/**'
+      - 'packages/glava-audio/**'
       - '.github/workflows/build-glava.yml'
   workflow_dispatch:
 
@@ -29,24 +30,25 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Build glava
+      - name: Build glava and glava-audio
         env:
           TERMUX_PKG_MAINTAINER: "@as14725836"
         run: |
           set -euo pipefail
           ./scripts/run-docker.sh ./build-package.sh -a ${{ matrix.target_arch }} -f glava
+          ./scripts/run-docker.sh ./build-package.sh -a ${{ matrix.target_arch }} -f glava-audio
 
       - name: Collect debs
         if: always()
         run: |
           set -euo pipefail
           mkdir -p out
-          # Only package the glava artifacts. Dependency debs are also placed in
+          # Only package our own artifacts. Dependency debs are also placed in
           # output/, but some of them carry an epoch in the version
           # (e.g. libblocksruntime_1:6.4.0) which would break the artifact
           # uploader because ':' is not a valid character in an artifact path.
           found=0
-          for f in output/glava_*.deb; do
+          for f in output/glava_*.deb output/glava-audio_*.deb; do
             [ -e "$f" ] || continue
             cp "$f" out/
             found=1
@@ -108,23 +110,38 @@ jobs:
           echo "TAG=$TAG"
 
           cat > notes.md <<'EOF'
-          GLava for Termux (x11-repo)
+          glava + glava-audio for Termux (x11-repo)
 
+          `glava` (audio visualiser):
           - PulseAudio replaced by the built-in FIFO audio backend (`glava -a fifo`)
           - Built with `-Ddisable_pulse=true`; no libpulse dependency
           - Non-executable stack (`-Wl,-z,noexecstack`) for Android
           - Requires: termux-x11 + Mesa (GLX)
 
+          `glava-audio` (audio bridge helper):
+          - Routes all PulseAudio output into a raw PCM FIFO so glava can
+            visualise system audio (music, video, Wine games)
+          - Chain: app -> null-sink -> loopback -> pipe-sink -> $PREFIX/tmp/glava.fifo
+          - Ships sox based test tones (`glava-audio test-bass`)
+
           Install:
 
           ```
-          pkg install ./glava_*.deb
+          pkg install ./glava_*.deb ./glava-audio_*.deb
+          ```
+
+          Quick start:
+
+          ```
+          glava-audio start      # start the PulseAudio bridge
+          glava-audio glava      # launch the visualiser
+          glava-audio test-bass  # play a test tone
           ```
           EOF
           sed -i 's/^          //' notes.md
 
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$TAG" \
-            --title "glava ${VERSION}-${REVISION}" \
+            --title "glava + glava-audio ${VERSION}-${REVISION}" \
             --notes-file notes.md \
             release/*.deb release/SHA256SUMS
