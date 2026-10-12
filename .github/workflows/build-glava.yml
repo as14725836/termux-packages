@@ -41,18 +41,23 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
+          # Only package the glava artifacts. Dependency debs are also placed in
+          # output/, but some of them carry an epoch in the version
+          # (e.g. libblocksruntime_1:6.4.0) which would break the artifact
+          # uploader because ':' is not a valid character in an artifact path.
           found=0
-          for f in output/*.deb; do
+          for f in output/glava_*.deb; do
             [ -e "$f" ] || continue
             cp "$f" out/
             found=1
           done
           if [ "$found" = "0" ]; then
-            echo "::warning::no .deb produced for ${{ matrix.target_arch }}"
+            echo "::error::no glava .deb produced for ${{ matrix.target_arch }}"
+            exit 1
           fi
-          ls -la out || true
-          (cd out && sha256sum ./*.deb > SHA256SUMS 2>/dev/null) || true
-          cat out/SHA256SUMS 2>/dev/null || true
+          ls -la out
+          (cd out && sha256sum ./*.deb > SHA256SUMS)
+          cat out/SHA256SUMS
 
       - name: Upload deb artifacts
         if: always()
