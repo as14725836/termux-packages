@@ -1,0 +1,125 @@
+name: Build glava package
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'x11-packages/glava/**'
+      - '.github/workflows/build-glava.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-glava
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target_arch: [aarch64, arm, x86_64]
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Build glava
+        env:
+          TERMUX_PKG_MAINTAINER: "@as14725836"
+        run: |
+          set -euo pipefail
+          ./scripts/run-docker.sh ./build-package.sh -a ${{ matrix.target_arch }} -f glava
+
+      - name: Collect debs
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          found=0
+          for f in output/*.deb; do
+            [ -e "$f" ] || continue
+            cp "$f" out/
+            found=1
+          done
+          if [ "$found" = "0" ]; then
+            echo "::warning::no .deb produced for ${{ matrix.target_arch }}"
+          fi
+          ls -la out || true
+          (cd out && sha256sum ./*.deb > SHA256SUMS 2>/dev/null) || true
+          cat out/SHA256SUMS 2>/dev/null || true
+
+      - name: Upload deb artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: glava-debs-${{ matrix.target_arch }}
+          path: out/
+          if-no-files-found: warn
+
+  release:
+    permissions:
+      contents: write
+    needs: build
+    if: |
+      always() &&
+      github.ref == 'refs/heads/master' &&
+      !cancelled()
+    runs-on: ubuntu-slim
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: ./artifacts
+
+      - name: Flatten debs
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          find ./artifacts -name '*.deb' -exec cp {} release/ \;
+          ls -la release/
+          (cd release && sha256sum ./*.deb | sort -k2 > SHA256SUMS)
+          cat release/SHA256SUMS
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(grep -m1 '^TERMUX_PKG_VERSION=' x11-packages/glava/build.sh | cut -d= -f2 | tr -d '"')"
+          REVISION="$(grep -m1 '^TERMUX_PKG_REVISION=' x11-packages/glava/build.sh | cut -d= -f2 | tr -d '"')"
+          [ -n "$REVISION" ] || REVISION=0
+          TAG="glava-${VERSION}-${REVISION}"
+          echo "TAG=$TAG"
+
+          cat > notes.md <<'EOF'
+          GLava for Termux (x11-repo)
+
+          - PulseAudio replaced by the built-in FIFO audio backend (`glava -a fifo`)
+          - Built with `-Ddisable_pulse=true`; no libpulse dependency
+          - Non-executable stack (`-Wl,-z,noexecstack`) for Android
+          - Requires: termux-x11 + Mesa (GLX)
+
+          Install:
+
+          ```
+          pkg install ./glava_*.deb
+          ```
+          EOF
+          sed -i 's/^          //' notes.md
+
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" \
+            --title "glava ${VERSION}-${REVISION}" \
+            --notes-file notes.md \
+            release/*.deb release/SHA256SUMS

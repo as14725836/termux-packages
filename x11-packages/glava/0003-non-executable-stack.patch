@@ -1,0 +1,15 @@
+--- a/meson.build	2026-10-12 04:14:19.847370096 +0000
++++ b/meson.build	2026-10-12 04:14:16.367370097 +0000
+@@ -50,6 +50,12 @@
+ add_project_arguments('-DGLAVA_DEFAULT_AUDIO_IMPL="@0@"'.format(default_audio_impl),
+                       language: ['cpp', 'c'])
+ 
++# Android/Termux (and hardened toolchains) refuse to load shared objects whose
++# PT_GNU_STACK requests an executable stack. Some objects in this project end
++# up without a .note.GNU-stack marker, so force a non-executable stack at link
++# time. GLava does not use GCC nested functions/trampolines, so this is safe.
++add_project_link_arguments('-Wl,-z,noexecstack', language: ['c', 'cpp'])
++
+ if cc.get_id() == 'clang'
+   add_project_arguments('-fblocks', language: 'c')
+   glava_dependencies += cc.find_library('BlocksRuntime')

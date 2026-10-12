@@ -1,0 +1,34 @@
+--- a/glfft/glfft_gl_interface.hpp	2021-06-17 11:23:13.000000000 +0000
++++ b/glfft/glfft_gl_interface.hpp	2026-10-12 04:13:20.803370118 +0000
+@@ -29,6 +29,8 @@
+     #include <stdarg.h>
+     #include <stdlib.h>
+     #include <string.h>
++    #include <stdio.h>
++    #include <errno.h>
+     #include <error.h>
+ }
+ 
+--- a/glfft/glfft_wisdom.cpp	2021-06-17 11:23:13.000000000 +0000
++++ b/glfft/glfft_wisdom.cpp	2026-10-12 04:13:20.807370118 +0000
+@@ -20,6 +20,7 @@
+ #include "glfft_interface.hpp"
+ #include "glfft.hpp"
+ #include <utility>
++#include <stdexcept>
+ 
+ /* GLAVA NOTICE: automatic wisdom serialization support may be added at a late date */
+ #ifdef GLFFT_SERIALIZATION
+--- a/glava/glava.h	2021-06-17 11:23:13.000000000 +0000
++++ b/glava/glava.h	2026-10-12 04:13:44.771370109 +0000
+@@ -14,8 +14,8 @@
+ /* External API */
+ 
+ typedef struct glava_renderer* volatile glava_handle;
+-__attribute__((noreturn, visibility("default"))) void (*glava_abort)            (void);
+-__attribute__((noreturn, visibility("default"))) void (*glava_return)           (void);
++__attribute__((noreturn, visibility("default"))) extern void (*glava_abort)      (void);
++__attribute__((noreturn, visibility("default"))) extern void (*glava_return)     (void);
+ __attribute__((visibility("default")))           void glava_assign_external_ctx (void* ctx);
+ __attribute__((visibility("default")))           void glava_entry               (int argc, char** argv, glava_handle* ret);
+ __attribute__((visibility("default")))           void glava_terminate           (glava_handle* ref);
