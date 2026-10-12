@@ -25,6 +25,7 @@ TERMUX_PKG_BUILD_DEPENDS="xorgproto"
 # libadrenotools is vendored under server/libadrenotools and has to be built
 # before the renderer links against it; see termux_step_pre_configure.
 TERMUX_PKG_EXTRA_CONFIGURE_ARGS="
+-DCMAKE_SYSTEM_NAME=Linux
 -DVORTEK_BUILD_CLI=ON
 -DVORTEK_BUILD_JNI=OFF
 -DVORTEK_CLI_BUNDLE_WINLATOR_SOURCES=ON
@@ -37,11 +38,18 @@ TERMUX_PKG_EXTRA_CONFIGURE_ARGS="
 
 # There is no CMakeLists.txt at the top of the source tree (the renderer lives
 # in server/vortekrenderer), so the default configure step would be skipped.
-# Point the stock cmake helper at that subdirectory and reuse it, rather than
-# hand-rolling a cmake invocation: the helper also forwards $CFLAGS/$CXXFLAGS
-# (which carry --target and the sysroot) into CMAKE_C_FLAGS, and without those
-# the try-compile step links against a bare NDK sysroot and fails with
-# "cannot open crtbegin_dynamic.o" / "unable to find library -lc++".
+# Point the stock cmake helper at that subdirectory and reuse it: it handles
+# the toolchain flags and the install paths, and the extra
+# -DCMAKE_SYSTEM_NAME=Linux above (which is appended after the helper's own
+# -DCMAKE_SYSTEM_NAME=Android, so it wins) keeps CMake out of its Android
+# mode. That mode derives --target=aarch64-none-linux-android from
+# CMAKE_ANDROID_ARCH_LLVM_TRIPLE and only appends the API level when
+# CMAKE_ANDROID_NDK_TOOLCHAIN_UNIFIED is set, which never happens with a
+# standalone toolchain. The resulting target has no API-leveled sysroot
+# subdirectory, so the compiler probe fails with "cannot open
+# crtbegin_dynamic.o" and "unable to find library -lc++". With
+# CMAKE_SYSTEM_NAME=Linux the compilers are used as-is, and $CFLAGS carries
+# --target=$CCTERMUX_HOST_PLATFORM unchanged.
 termux_step_configure() {
 	termux_setup_cmake
 	termux_setup_ninja
@@ -62,16 +70,22 @@ termux_step_pre_configure() {
 	# Upstream ships no aggregating CMakeLists for libadrenotools, so build it
 	# here. Its src/ and src/hook/ targets produce libadrenotools.so plus the
 	# libhook_impl.so / libmain_hook.so hook payloads the CLI loads at runtime.
+	#
+	# CMAKE_SYSTEM_NAME=Linux keeps this out of CMake's Android mode for the
+	# same reason as the renderer build above. $CC/$CXX already target
+	# aarch64-linux-android$TERMUX_PKG_API_LEVEL through the standalone
+	# toolchain wrappers, so no Android-specific handling is required; passing
+	# --target explicitly is defensive, in case a future helper stops doing it.
 	local adreno_build="$TERMUX_PKG_BUILDDIR/adrenotools"
 	cmake -S "$TERMUX_PKG_SRCDIR/server/libadrenotools" -B "$adreno_build" \
 		-G Ninja \
-		-DCMAKE_SYSTEM_NAME=Android \
-		-DCMAKE_SYSTEM_VERSION="$TERMUX_PKG_API_LEVEL" \
-		-DCMAKE_ANDROID_STANDALONE_TOOLCHAIN="$TERMUX_STANDALONE_TOOLCHAIN" \
+		-DCMAKE_SYSTEM_NAME=Linux \
 		-DCMAKE_SYSTEM_PROCESSOR=aarch64 \
 		-DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" \
-		-DCMAKE_C_FLAGS="$CFLAGS $CPPFLAGS" \
-		-DCMAKE_CXX_FLAGS="$CXXFLAGS $CPPFLAGS" \
+		-DCMAKE_C_FLAGS="--target=$CCTERMUX_HOST_PLATFORM $CFLAGS $CPPFLAGS" \
+		-DCMAKE_CXX_FLAGS="--target=$CCTERMUX_HOST_PLATFORM $CXXFLAGS $CPPFLAGS" \
+		-DCMAKE_EXE_LINKER_FLAGS="--target=$CCTERMUX_HOST_PLATFORM $LDFLAGS" \
+		-DCMAKE_SHARED_LINKER_FLAGS="--target=$CCTERMUX_HOST_PLATFORM $LDFLAGS" \
 		-DCMAKE_AR="$(command -v "$AR")" \
 		-DCMAKE_RANLIB="$(command -v "$RANLIB")" \
 		-DCMAKE_BUILD_TYPE=Release \
