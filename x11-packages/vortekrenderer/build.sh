@@ -76,6 +76,13 @@ termux_step_pre_configure() {
 	# aarch64-linux-android$TERMUX_PKG_API_LEVEL through the standalone
 	# toolchain wrappers, so no Android-specific handling is required; passing
 	# --target explicitly is defensive, in case a future helper stops doing it.
+	#
+	# CMAKE_POSITION_INDEPENDENT_CODE=ON is required because adb/abi-common.cmake
+	# only turns it on for something other than a plain Linux system name. The
+	# static liblinkernsbypass.a gets linked into the shared libadrenotools.so,
+	# and without -fPIC that fails with "relocation R_AARCH64_ADR_PREL_PG_HI21
+	# cannot be used against symbol 'android_link_namespaces'; recompile with
+	# -fPIC".
 	local adreno_build="$TERMUX_PKG_BUILDDIR/adrenotools"
 	cmake -S "$TERMUX_PKG_SRCDIR/server/libadrenotools" -B "$adreno_build" \
 		-G Ninja \
@@ -90,6 +97,7 @@ termux_step_pre_configure() {
 		-DCMAKE_RANLIB="$(command -v "$RANLIB")" \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DBUILD_SHARED_LIBS=ON \
+		-DCMAKE_POSITION_INDEPENDENT_CODE=ON \
 		-DCMAKE_LIBRARY_OUTPUT_DIRECTORY="$TERMUX_PKG_BUILDDIR/adreno-lib"
 	cmake --build "$adreno_build" -j"$(nproc)"
 
