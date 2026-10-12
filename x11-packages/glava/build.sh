@@ -6,7 +6,7 @@ TERMUX_PKG_VERSION="1.6.3"
 TERMUX_PKG_REVISION=1
 TERMUX_PKG_SRCURL="https://github.com/jarcode-foss/glava/archive/6fc0e32da2c54954a3784c2ced1024e576ba8d8d.tar.gz"
 TERMUX_PKG_SHA256=7114f038ae866f8b6657de555e885ccf909dae7baf1d2f8b6d46430fdc7ae2dc
-TERMUX_PKG_DEPENDS="libc++, libglvnd, libx11, libxext, libxrender, libxcomposite, opengl"
+TERMUX_PKG_DEPENDS="libblocksruntime, libc++, libglvnd, libx11, libxext, libxrender, libxcomposite, opengl"
 TERMUX_PKG_BUILD_DEPENDS="libglvnd-dev, xorgproto"
 
 # PulseAudio is not available on Termux/Android; the FIFO audio backend is
@@ -23,13 +23,4 @@ TERMUX_PKG_EXTRA_CONFIGURE_ARGS="
 
 termux_step_pre_configure() {
 	termux_setup_meson
-	# GLava relies on GCC's legacy tentative-definition merging for two global
-	# function pointers; keep the old behaviour on toolchains defaulting to
-	# -fno-common (see patch 02 for the proper `extern` fix as well).
-	CFLAGS+=" -fcommon"
-}
-
-termux_step_post_massage() {
-	# Nothing to do; kept for clarity.
-	:
 }
