@@ -37,30 +37,17 @@ jobs:
           set -euo pipefail
           ./scripts/run-docker.sh ./build-package.sh -a ${{ matrix.target_arch }} -f glava
 
-      - name: Build glava-audio
-        env:
-          TERMUX_PKG_MAINTAINER: "@as14725836"
-        run: |
-          set -euo pipefail
-          # Use -I so the pulseaudio dependency chain is downloaded as prebuilt
-          # debs from the Termux repository. Building that chain from source
-          # inside this package hits a buildorder.py ordering problem where
-          # libsndfile is scheduled after pulseaudio, even though pulseaudio
-          # depends on it, which makes pulseaudio's meson fail on
-          # "Dependency sndfile not found".
-          ./scripts/run-docker.sh ./build-package.sh -a ${{ matrix.target_arch }} -I -f glava-audio
-
       - name: Collect debs
         if: always()
         run: |
           set -euo pipefail
           mkdir -p out
-          # Only package our own artifacts. Dependency debs are also placed in
+          # Only package our own artifact. Dependency debs are also placed in
           # output/, but some of them carry an epoch in the version
           # (e.g. libblocksruntime_1:6.4.0) which would break the artifact
           # uploader because ':' is not a valid character in an artifact path.
           found=0
-          for f in output/glava_*.deb output/glava-audio_*.deb; do
+          for f in output/glava_*.deb; do
             [ -e "$f" ] || continue
             cp "$f" out/
             found=1
@@ -81,10 +68,63 @@ jobs:
           path: out/
           if-no-files-found: warn
 
+  build-audio:
+    # glava-audio only installs a shell script and a config file, so it is
+    # arch-independent and has to be built exactly once. Building it per arch
+    # drags the pulseaudio/sox dependency chain in from source on architectures
+    # where the prebuilt debs are older, and that chain currently fails on
+    # libmad 0.16.5 with "CMake Error at CMakeLists.txt:86 (if): ASO and FALSE".
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Build glava-audio
+        env:
+          TERMUX_PKG_MAINTAINER: "@as14725836"
+        run: |
+          set -euo pipefail
+          # -I downloads the pulseaudio dependency chain as prebuilt debs from
+          # the Termux repository. Building that chain from source inside this
+          # package hits a buildorder.py ordering problem where libsndfile is
+          # scheduled after pulseaudio even though pulseaudio depends on it,
+          # which makes pulseaudio's meson fail on "Dependency sndfile not
+          # found".
+          ./scripts/run-docker.sh ./build-package.sh -a aarch64 -I -f glava-audio
+
+      - name: Collect debs
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          found=0
+          for f in output/glava-audio_*.deb; do
+            [ -e "$f" ] || continue
+            cp "$f" out/
+            found=1
+          done
+          if [ "$found" = "0" ]; then
+            echo "::error::no glava-audio .deb produced"
+            exit 1
+          fi
+          ls -la out
+          (cd out && sha256sum ./*.deb > SHA256SUMS)
+          cat out/SHA256SUMS
+
+      - name: Upload deb artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: glava-debs-audio
+          path: out/
+          if-no-files-found: warn
+
   release:
     permissions:
       contents: write
-    needs: build
+    needs: [build, build-audio]
     if: |
       always() &&
       github.ref == 'refs/heads/master' &&
