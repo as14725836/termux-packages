@@ -1,0 +1,16 @@
+--- a/meson.build	2026-10-12 04:41:05.347369483 +0000
++++ b/meson.build	2026-10-12 04:41:05.155369483 +0000
+@@ -86,6 +86,13 @@
+ if not get_option('disable_glx')
+   add_project_arguments('-DGLAVA_GLX', language: ['cpp', 'c'])
+   glava_dependencies += cc.find_library('Xrender')
++  # On Android/Bionic there is no SysV shared memory: libandroid-shmem
++  # (from Termux) provides <sys/shm.h> and the libandroid_shm* symbols used
++  # by the desktop-capture helper in xwin.c. Only link it where present.
++  android_shmem = cc.find_library('android-shmem', required: false)
++  if android_shmem.found()
++    glava_dependencies += android_shmem
++  endif
+ endif
+ 
+ if get_option('standalone')
