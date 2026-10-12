@@ -1,0 +1,20 @@
+--- a/server/vortekrenderer/CMakeLists.txt
++++ b/server/vortekrenderer/CMakeLists.txt
+@@ -16,10 +16,13 @@
+ 
+ # Release：-O3 + NDEBUG；request_handler.c / xwindow_swapchain.c 是每帧热路径
+ set(VORTEK_RELEASE_FLAGS "-O3 -DNDEBUG -fno-semantic-interposition -fno-plt -ffunction-sections -fdata-sections")
+-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -Wno-unused-function -Wimplicit-function-declaration -D_GNU_SOURCE -DVK_USE_PLATFORM_ANDROID_KHR")
+-set(CMAKE_C_FLAGS_RELEASE "${VORTEK_RELEASE_FLAGS}")
+-set(CMAKE_C_FLAGS_RELWITHDEBINFO "${VORTEK_RELEASE_FLAGS} -g")
+-add_link_options("-Wl,-O2,--gc-sections,--as-needed")
++set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-function -Wimplicit-function-declaration -D_GNU_SOURCE -DVK_USE_PLATFORM_ANDROID_KHR")
++# Append to the toolchain-supplied release flags instead of replacing them so
++# that distribution hardening (-fstack-protector-strong, -Wl,-z,relro,-z,now)
++# and the packager's optimisation level survive.
++set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${VORTEK_RELEASE_FLAGS}")
++set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} ${VORTEK_RELEASE_FLAGS} -g")
++add_link_options("-Wl,-O2,--gc-sections,--as-needed")
+ 
+ set(VORTEK_RENDERER_SOURCES
+     src/vk_object.c

@@ -1,0 +1,163 @@
+name: Build vortekrenderer package
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'x11-packages/vortekrenderer/**'
+      - '.github/workflows/build-vortekrenderer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-vortekrenderer
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # The renderer only supports aarch64: libadrenotools hard-requires
+    # arm64-v8a and the CLI targets aarch64-linux-android explicitly.
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Build vortekrenderer
+        env:
+          TERMUX_PKG_MAINTAINER: "@as14725836"
+        run: |
+          set -euo pipefail
+          ./scripts/run-docker.sh ./build-package.sh -a aarch64 -f vortekrenderer
+
+      - name: Collect debs
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # Only package our own artifact. Dependency debs also land in
+          # output/, but some carry an epoch in the version (e.g.
+          # libblocksruntime_1:6.4.0) which breaks artifact upload because
+          # ':' is not valid in an artifact path.
+          found=0
+          for f in output/vortekrenderer_*.deb; do
+            [ -e "$f" ] || continue
+            cp "$f" out/
+            found=1
+          done
+          if [ "$found" = "0" ]; then
+            echo "::error::no vortekrenderer .deb produced"
+            exit 1
+          fi
+          ls -la out
+          (cd out && sha256sum ./*.deb > SHA256SUMS)
+          cat out/SHA256SUMS
+
+      - name: Show package contents
+        if: always()
+        run: |
+          set -euo pipefail
+          for deb in out/*.deb; do
+            echo "=== $deb ==="
+            dpkg-deb -c "$deb" || true
+            echo "--- control ---"
+            dpkg-deb -I "$deb" || true
+          done
+
+      - name: Upload deb artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vortekrenderer-debs-aarch64
+          path: out/
+          if-no-files-found: warn
+
+  release:
+    permissions:
+      contents: write
+    needs: build
+    if: |
+      always() &&
+      github.ref == 'refs/heads/master' &&
+      !cancelled()
+    runs-on: ubuntu-slim
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: ./artifacts
+
+      - name: Flatten debs
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          find ./artifacts -name '*.deb' -exec cp {} release/ \;
+          ls -la release/
+          (cd release && sha256sum ./*.deb | sort -k2 > SHA256SUMS)
+          cat release/SHA256SUMS
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(grep -m1 '^TERMUX_PKG_VERSION=' x11-packages/vortekrenderer/build.sh | cut -d= -f2 | tr -d '"')"
+          REVISION="$(grep -m1 '^TERMUX_PKG_REVISION=' x11-packages/vortekrenderer/build.sh | cut -d= -f2 | tr -d '"')"
+          [ -n "$REVISION" ] || REVISION=0
+          TAG="vortekrenderer-${VERSION}-${REVISION}"
+          echo "TAG=$TAG"
+
+          cat > notes.md <<'EOF'
+          vortekrenderer (Vortek renderer server) for Termux aarch64
+
+          This is the **server** half of Vortek. It is the process that actually
+          drives the GPU; the app-facing half is the glibc client ICD
+          (`libvulkan_vortek.so`), published separately in the upstream Vortek
+          release as `vortek-client-termux-glibc-aarch64.zip`.
+
+          Contents:
+
+          - `vortekrenderer-cli` -> `$PREFIX/bin`
+          - `libadrenotools.so`, `libhook_impl.so`, `libmain_hook.so` -> `$PREFIX/lib`
+
+          The hook payloads are installed into `$PREFIX/lib` on purpose, so that
+          the CLI's built-in hook-directory probe finds them without any extra
+          flags.
+
+          Install:
+
+          ```
+          pkg install ./vortekrenderer_*.deb
+          ```
+
+          Usage (start the server *before* the client; the client connects
+          inside `vk_icdGetInstanceProcAddr()` and does not retry in-process):
+
+          ```
+          export VK_ICD_FILENAMES=<client>/share/vulkan/icd.d/vortek_icd.aarch64.json
+          vortekrenderer-cli -s "$PREFIX/tmp/.vortek/V0"
+          ```
+
+          Requires Termux:X11 for presentation. With DRI3/AHardwareBuffer
+          available the server takes the zero-copy DIRECT path, otherwise it
+          falls back to BLIT and finally XShm.
+          EOF
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/*.deb release/SHA256SUMS --clobber
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file notes.md \
+              release/*.deb release/SHA256SUMS
+          fi
