@@ -1,0 +1,53 @@
+--- a/glava/render.h	2021-06-17 11:23:13.000000000 +0000
++++ b/glava/render.h	2026-10-12 04:35:04.707369621 +0000
+@@ -78,7 +78,7 @@
+     bool     (*should_render)  (void* ptr);
+     bool     (*bg_changed)     (void* ptr);
+     void     (*swap_buffers)   (void* ptr);
+-    void     (*raise)          (void* ptr);
++    void     (*raise_window)   (void* ptr);
+     void     (*destroy)        (void* ptr);
+     void     (*terminate)      (void);
+     void     (*get_pos)        (void* ptr, int* x, int* y);
+@@ -116,7 +116,7 @@
+         WCB_FUNC(should_render),                \
+         WCB_FUNC(bg_changed),                   \
+         WCB_FUNC(swap_buffers),                 \
+-        WCB_FUNC(raise),                        \
++        WCB_FUNC(raise_window),                        \
+         WCB_FUNC(destroy),                      \
+         WCB_FUNC(terminate),                    \
+         WCB_FUNC(set_swap),                     \
+--- a/glava/render.c	2021-06-17 11:23:13.000000000 +0000
++++ b/glava/render.c	2026-10-12 04:35:04.707369621 +0000
+@@ -2406,7 +2406,7 @@
+         }
+         
+         if (gl->force_raised) {
+-            gl->wcb->raise(gl->w);
++            gl->wcb->raise_window(gl->w);
+         }
+     }
+ 
+--- a/glava/glx_wcb.c	2021-06-17 11:23:13.000000000 +0000
++++ b/glava/glx_wcb.c	2026-10-12 04:35:04.623369621 +0000
+@@ -544,7 +544,7 @@
+     return w;
+ }
+ 
+-static void raise(struct glxwin* w) {
++static void raise_window(struct glxwin* w) {
+     if (w->override_state == '\0') {
+         XClientMessageEvent ev = {
+             .type = ClientMessage,
+--- a/glava/glfw_wcb.c	2021-06-17 11:23:13.000000000 +0000
++++ b/glava/glfw_wcb.c	2026-10-12 04:35:04.707369621 +0000
+@@ -140,7 +140,7 @@
+ static double   get_time       (GLFWwindow* w)                 { return glfwGetTime();            }
+ static void     set_time       (GLFWwindow* w, double time)    { glfwSetTime(time);               }
+ static void     set_swap       (int i)                         { glfwSwapInterval(i); }
+-static void     raise          (GLFWwindow* w)                 { glfwShowWindow(w); }
++static void     raise_window   (GLFWwindow* w)                 { glfwShowWindow(w); }
+ static void     destroy        (GLFWwindow* w)                 { glfwDestroyWindow(w); }
+ static void     terminate      (void)                          { glfwTerminate(); }
+ 
