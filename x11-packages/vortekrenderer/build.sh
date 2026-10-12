@@ -64,6 +64,12 @@ termux_step_configure() {
 }
 
 termux_step_pre_configure() {
+	# pre_configure runs before termux_step_configure, so the cmake/ninja
+	# helpers have not been fetched yet. Pull them in here because we need
+	# cmake for libadrenotools already.
+	termux_setup_cmake
+	termux_setup_ninja
+
 	# Upstream ships no aggregating CMakeLists for libadrenotools, so build it
 	# here. Its src/ and src/hook/ targets produce libadrenotools.so plus the
 	# libhook_impl.so / libmain_hook.so hook payloads the CLI loads at runtime.

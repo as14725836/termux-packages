@@ -30,13 +30,25 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Build glava and glava-audio
+      - name: Build glava
         env:
           TERMUX_PKG_MAINTAINER: "@as14725836"
         run: |
           set -euo pipefail
           ./scripts/run-docker.sh ./build-package.sh -a ${{ matrix.target_arch }} -f glava
-          ./scripts/run-docker.sh ./build-package.sh -a ${{ matrix.target_arch }} -f glava-audio
+
+      - name: Build glava-audio
+        env:
+          TERMUX_PKG_MAINTAINER: "@as14725836"
+        run: |
+          set -euo pipefail
+          # Use -I so the pulseaudio dependency chain is downloaded as prebuilt
+          # debs from the Termux repository. Building that chain from source
+          # inside this package hits a buildorder.py ordering problem where
+          # libsndfile is scheduled after pulseaudio, even though pulseaudio
+          # depends on it, which makes pulseaudio's meson fail on
+          # "Dependency sndfile not found".
+          ./scripts/run-docker.sh ./build-package.sh -a ${{ matrix.target_arch }} -I -f glava-audio
 
       - name: Collect debs
         if: always()

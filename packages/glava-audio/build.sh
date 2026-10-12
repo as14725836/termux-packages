@@ -7,11 +7,21 @@ TERMUX_PKG_REVISION=1
 TERMUX_PKG_AUTO_UPDATE=false
 TERMUX_PKG_PLATFORM_INDEPENDENT=true
 TERMUX_PKG_SKIP_SRC_EXTRACT=true
-TERMUX_PKG_BUILD_IN_SRC=true
 TERMUX_PKG_DEPENDS="pulseaudio, sox"
 TERMUX_PKG_RECOMMENDS="glava"
 TERMUX_PKG_SUGGESTS="termux-x11"
 TERMUX_PKG_CONFFILES="etc/glava-audio/pa.cfg"
+
+# This package only ships shell scripts and a config file, so there is nothing
+# to configure or compile. Without these overrides the build would pick up a
+# meson.build left behind by an earlier glava build in the same tree.
+termux_step_configure() {
+	:
+}
+
+termux_step_make() {
+	:
+}
 
 termux_step_make_install() {
 	install -Dm700 "$TERMUX_PKG_BUILDER_DIR/glava-audio.sh" \
